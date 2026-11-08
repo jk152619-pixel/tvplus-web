@@ -151,15 +151,30 @@
       msg.textContent = "Carregando..."; msg.style.display = "block";
       if (hls) { hls.destroy(); hls = null; }
       if (mp) { try { mp.destroy(); } catch (e) {} mp = null; }
+      box.__tok = null;
       var u = d.urls[i], isHls = /\.m3u8(\?|$)/i.test(u), isTs = /\.ts(\?|$)/i.test(u);
       if (isTs) {
         v.disableRemotePlayback = true;
+        // o servidor manda cada pedido para um servidor de vídeo diferente: tenta os 2 formatos de link, algumas vezes
+        var short = u.replace("/live/", "/").replace(/\.ts(\?|$)/i, "$1");
+        var alts = [u, short, u, short, u, short], at = 0, token = {};
         loadMpegts().then(function (M) {
           if (!M || !M.isSupported()) { fail(); msg.innerHTML += "<br><small>Este iPhone precisa do iOS 17.1 ou mais novo.</small>"; return; }
-          mp = M.createPlayer({ type: "mpegts", isLive: !!d.live, url: u }, { enableWorker: false, liveBufferLatencyChasing: true, lazyLoad: false });
-          mp.attachMediaElement(v); mp.load();
-          mp.on(M.Events.ERROR, function () { fail(); });
-          var pp = mp.play(); if (pp && pp.catch) pp.catch(function () {});
+          function attempt() {
+            if (box.__tok !== token) return;
+            if (mp) { try { mp.destroy(); } catch (e) {} mp = null; }
+            if (at >= alts.length) { fail(); return; }
+            var url = alts[at++], started = false, tm = 0;
+            msg.textContent = at > 1 ? "Conectando... (tentativa " + at + ")" : "Carregando..."; msg.style.display = "block";
+            mp = M.createPlayer({ type: "mpegts", isLive: !!d.live, url: url }, { enableWorker: false, liveBufferLatencyChasing: true, lazyLoad: false });
+            mp.attachMediaElement(v); mp.load();
+            var again = function () { if (started) return; started = true; clearTimeout(tm); setTimeout(attempt, 300); };
+            mp.on(M.Events.ERROR, again);
+            v.addEventListener("playing", function onp() { started = true; clearTimeout(tm); v.removeEventListener("playing", onp); });
+            tm = setTimeout(again, 12000);
+            var pp = mp.play(); if (pp && pp.catch) pp.catch(function () {});
+          }
+          box.__tok = token; attempt();
         }, fail);
         showUi(); return;
       }
@@ -178,7 +193,7 @@
       msg.innerHTML = "Não foi possível abrir este conteúdo aqui." + (d.urls.length > 1 ? "<br>Toque em › para tentar outro canal." : "") + (d.live ? "" : "<br><small>Alguns filmes e séries vêm num formato que o iPhone não toca.</small>");
     }
     v.addEventListener("playing", function () { msg.style.display = "none"; });
-    v.addEventListener("error", fail);
+    v.addEventListener("error", function () { if (!mp) fail(); });
     box.onclick = function (e) { if (e.target === v || e.target === box) showUi(); };
     box.querySelector(".wp-x").onclick = function () { if (hls) hls.destroy(); if (mp) { try { mp.destroy(); } catch (e) {} } v.pause(); v.removeAttribute("src"); v.load(); box.remove(); };
     if (d.urls.length > 1) {
