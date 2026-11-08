@@ -189,7 +189,7 @@
   }
 
   function tryLogin(user, pass) {
-    var i = 0, lastErr = "Não foi possível conectar ao servidor";
+    var i = 0, lastErr = isWeb ? "Usuário ou senha incorretos, ou o seu servidor ainda não funciona no iPhone. Fale com o suporte." : "Não foi possível conectar ao servidor";
     function next() {
       if (i >= DNS.length) return Promise.reject(new Error(lastErr));
       var dns = DNS[i++];
