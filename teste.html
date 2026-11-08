@@ -11,18 +11,19 @@ button{width:100%;padding:14px;font-size:17px;font-weight:700;background:#e3101e
 video{width:100%;background:#000;margin-top:8px;border-radius:8px}
 </style></head><body>
 <h1>Teste do TVPlus+ no iPhone</h1>
-<input id="u" placeholder="Usuário" autocapitalize="off"><input id="p" placeholder="Senha" autocapitalize="off">
+<input id="u" placeholder="Usuário" autocapitalize="off"><input id="p" placeholder="Senha" autocapitalize="off"><input id="d" placeholder="DNS extra para testar (opcional), ex.: https://exemplo.com" autocapitalize="off">
 <button id="go">TESTAR</button>
 <div id="out"></div>
 <video id="v" playsinline controls muted></video>
 <script>
 var out=document.getElementById("out");
 function line(t,c){var d=document.createElement("div");d.className="r "+(c||"");d.textContent=t;out.appendChild(d);return d}
-var DNS=["https://yt19.org","https://t.smts.top","https://wempy.online:8080","https://t.smts.top:8880","http://yt19.org"];
+var BASE=["https://yt19.org","https://t.smts.top","https://wempy.online","https://levi25.biz"];var DNS=[];BASE.forEach(function(b){DNS.push(b)});["wempy.online","levi25.biz","t.smts.top"].forEach(function(h){[8443,2053,2083,2087,2096].forEach(function(p){DNS.push("https://"+h+":"+p)})});
 function test(base,u,p){
+  var ctl=window.AbortController?new AbortController():null;if(ctl)setTimeout(function(){ctl.abort()},8000);
   var url=base+"/player_api.php?username="+encodeURIComponent(u)+"&password="+encodeURIComponent(p);
   var l=line("Testando "+base+" ...","mid");
-  return fetch(url).then(function(r){return r.text().then(function(t){
+  return fetch(url,ctl?{signal:ctl.signal}:{}).then(function(r){return r.text().then(function(t){
     var ok=false;try{var j=JSON.parse(t);ok=j.user_info&&String(j.user_info.auth)==="1"}catch(e){}
     l.className="r "+(ok?"ok":"bad");
     l.textContent=base+" → HTTP "+r.status+(ok?" ✅ LOGIN OK":" ❌ resposta: "+t.slice(0,80));
@@ -30,7 +31,7 @@ function test(base,u,p){
   function(e){l.className="r bad";l.textContent=base+" → ❌ bloqueado ("+e.message+")";return null});
 }
 document.getElementById("go").onclick=function(){
-  out.innerHTML="";var u=document.getElementById("u").value.trim(),p=document.getElementById("p").value.trim();
+  out.innerHTML="";var ex=document.getElementById("d").value.trim().replace(/\/+$/,"");if(ex&&DNS.indexOf(ex)<0)DNS.unshift(ex);var u=document.getElementById("u").value.trim(),p=document.getElementById("p").value.trim();
   if(!u||!p){line("Digite usuário e senha","bad");return}
   var found=null,i=0;
   (function next(){
