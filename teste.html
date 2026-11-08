@@ -82,7 +82,7 @@ function canal(base,u,p){
     line("Formatos liberados nesse usuário: "+(f.length?f.join(", "):"(não informado)"),f.indexOf("m3u8")>=0?"ok":"bad");
   });
   fetch(q+"&action=get_live_streams").then(function(r){return r.json()}).then(function(a){
-    var picks=[a[0]].filter(Boolean);
+    var picks=[a[1]||a[0],a[Math.floor(a.length/2)],a[a.length-1]].filter(Boolean);
     var k=0; var first=picks[0];
     function one(){
       if(k>=picks.length){ if(first) window.__link(first); return; }
@@ -97,7 +97,13 @@ function canal(base,u,p){
         v.onerror=function(){fin(false,"❌ Canal "+k+" não tocou (erro "+(v.error&&v.error.code)+")")};
         setTimeout(function(){fin(false,"⏱ Canal "+k+" não começou em 15s")},15000);
         v.src=s;v.play().catch(function(){});
-      })},function(e){line("Link bloqueado ("+e.message+")","bad");one()});
+      })},function(e){line("Checagem do link falhou ("+e.message+") — tentando tocar mesmo assim...","mid");
+        var v=document.getElementById("v"),done=false;
+        function fin(ok,msg){if(done)return;done=true;line(msg,ok?"ok":"bad");v.removeAttribute("src");v.load();one();}
+        v.onplaying=function(){fin(true,"✅ Canal "+k+" TOCOU em m3u8!")};
+        v.onerror=function(){fin(false,"❌ Canal "+k+" não tocou (erro "+(v.error&&v.error.code)+")")};
+        setTimeout(function(){fin(false,"⏱ Canal "+k+" não começou em 15s")},15000);
+        v.src=s;v.play().catch(function(){});});
     }
     one();
   },function(e){line("Não consegui pegar a lista de canais ("+e.message+")","bad")});
