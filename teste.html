@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Teste TVPlus+</title>
+<style>
+body{font-family:-apple-system,Arial,sans-serif;background:#15161b;color:#fff;margin:0;padding:16px}
+h1{font-size:20px;color:#f7bf1a;margin:0 0 10px}
+input{width:100%;box-sizing:border-box;padding:12px;font-size:16px;margin:4px 0;border-radius:8px;border:0}
+button{width:100%;padding:14px;font-size:17px;font-weight:700;background:#e3101e;color:#fff;border:0;border-radius:8px;margin:8px 0}
+.r{background:#24252c;border-radius:8px;padding:10px;margin:6px 0;font-size:14px;word-break:break-all}
+.ok{border-left:6px solid #2ecc71}.bad{border-left:6px solid #e74c3c}.mid{border-left:6px solid #f7bf1a}
+video{width:100%;background:#000;margin-top:8px;border-radius:8px}
+</style></head><body>
+<h1>Teste do TVPlus+ no iPhone</h1>
+<input id="u" placeholder="Usuário" autocapitalize="off"><input id="p" placeholder="Senha" autocapitalize="off">
+<button id="go">TESTAR</button>
+<div id="out"></div>
+<video id="v" playsinline controls muted></video>
+<script>
+var out=document.getElementById("out");
+function line(t,c){var d=document.createElement("div");d.className="r "+(c||"");d.textContent=t;out.appendChild(d);return d}
+var DNS=["https://yt19.org","https://t.smts.top","https://wempy.online:8080","https://t.smts.top:8880","http://yt19.org"];
+function test(base,u,p){
+  var url=base+"/player_api.php?username="+encodeURIComponent(u)+"&password="+encodeURIComponent(p);
+  var l=line("Testando "+base+" ...","mid");
+  return fetch(url).then(function(r){return r.text().then(function(t){
+    var ok=false;try{var j=JSON.parse(t);ok=j.user_info&&String(j.user_info.auth)==="1"}catch(e){}
+    l.className="r "+(ok?"ok":"bad");
+    l.textContent=base+" → HTTP "+r.status+(ok?" ✅ LOGIN OK":" ❌ resposta: "+t.slice(0,80));
+    return ok?base:null;})},
+  function(e){l.className="r bad";l.textContent=base+" → ❌ bloqueado ("+e.message+")";return null});
+}
+document.getElementById("go").onclick=function(){
+  out.innerHTML="";var u=document.getElementById("u").value.trim(),p=document.getElementById("p").value.trim();
+  if(!u||!p){line("Digite usuário e senha","bad");return}
+  var found=null,i=0;
+  (function next(){
+    if(i>=DNS.length){ if(!found) line("Nenhum servidor aceitou o login pelo navegador.","bad"); return; }
+    test(DNS[i++],u,p).then(function(ok){ if(ok&&!found){found=ok;canal(ok,u,p)} next(); });
+  })();
+};
+function canal(base,u,p){
+  var l=line("Buscando um canal para testar o vídeo...","mid");
+  fetch(base+"/player_api.php?username="+encodeURIComponent(u)+"&password="+encodeURIComponent(p)+"&action=get_live_streams").then(function(r){return r.json()}).then(function(a){
+    var c=a[0]; if(!c){l.textContent="Lista de canais vazia";return}
+    var s=base+"/live/"+encodeURIComponent(u)+"/"+encodeURIComponent(p)+"/"+c.stream_id+".m3u8";
+    l.textContent="Testando vídeo: "+c.name;
+    fetch(s).then(function(r){line("Endereço final do vídeo: "+r.url.replace(/\/\/[^\/]+\/live\/[^\/]+\/[^\/]+/,"//…"),"mid")},function(e){line("Vídeo: link bloqueado ("+e.message+")","bad")});
+    var v=document.getElementById("v");
+    v.addEventListener("playing",function(){line("✅ O VÍDEO TOCOU!","ok")});
+    v.addEventListener("error",function(){line("❌ O vídeo não tocou (erro "+(v.error&&v.error.code)+")","bad")});
+    v.src=s;v.play().catch(function(){});
+  },function(e){l.className="r bad";l.textContent="Não consegui pegar a lista de canais ("+e.message+")"});
+}
+</script></body></html>
