@@ -15,6 +15,7 @@ video{width:100%;background:#000;margin-top:8px;border-radius:8px}
 <button id="go">TESTAR</button>
 <div id="out"></div>
 <video id="v" playsinline controls muted></video>
+<script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.8.0/dist/mpegts.js"></script>
 <script>
 var out=document.getElementById("out");
 function line(t,c){var d=document.createElement("div");d.className="r "+(c||"");d.textContent=t;out.appendChild(d);return d}
@@ -40,7 +41,23 @@ document.getElementById("go").onclick=function(){
   })();
 };
 function mask(t,u,p){return String(t).split(u).join("USER").split(encodeURIComponent(u)).join("USER").split(p).join("SENHA").split(encodeURIComponent(p)).join("SENHA")}
+
+function tsTest(base,u,p,c){
+  var s=base+"/live/"+encodeURIComponent(u)+"/"+encodeURIComponent(p)+"/"+c.stream_id+".ts";
+  if(!window.mpegts){line("Tocador TS não carregou","bad");return}
+  line("Suporte a TS neste iPhone: "+(mpegts.isSupported()?"SIM":"NÃO (precisa iOS 17.1+)"),mpegts.isSupported()?"ok":"bad");
+  if(!mpegts.isSupported())return;
+  var v=document.getElementById("v");v.disableRemotePlayback=true;
+  var l=line("Testando TS no canal: "+c.name,"mid"),done=false;
+  var pl=mpegts.createPlayer({type:"mpegts",isLive:true,url:s},{enableWorker:false,liveBufferLatencyChasing:true});
+  pl.attachMediaElement(v);pl.load();
+  v.onplaying=function(){if(!done){done=true;line("✅ TS TOCOU NO iPHONE!","ok")}};
+  pl.on(mpegts.Events.ERROR,function(t,d){if(!done){done=true;line("❌ TS não tocou ("+t+" / "+d+")","bad")}});
+  setTimeout(function(){if(!done){done=true;line("⏱ TS não começou em 20s","bad")}},20000);
+  var x=pl.play();if(x&&x.catch)x.catch(function(){});
+}
 function canal(base,u,p){
+  window.__ts=function(c){tsTest(base,u,p,c)};
   var q=base+"/player_api.php?username="+encodeURIComponent(u)+"&password="+encodeURIComponent(p);
   fetch(q).then(function(r){return r.json()}).then(function(j){
     var f=(j.user_info&&j.user_info.allowed_output_formats)||[];
@@ -48,9 +65,9 @@ function canal(base,u,p){
   });
   fetch(q+"&action=get_live_streams").then(function(r){return r.json()}).then(function(a){
     var picks=[a[0],a[Math.floor(a.length/2)],a[a.length-1]].filter(Boolean);
-    var k=0;
+    var k=0; var first=picks[0];
     function one(){
-      if(k>=picks.length) return;
+      if(k>=picks.length){ if(first) window.__ts(first); return; }
       var c=picks[k++];
       var s=base+"/live/"+encodeURIComponent(u)+"/"+encodeURIComponent(p)+"/"+c.stream_id+".m3u8";
       var l=line("Canal "+k+": "+c.name,"mid");

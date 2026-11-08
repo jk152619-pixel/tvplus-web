@@ -101,7 +101,7 @@
     return b + "/" + kind + "/" + encodeURIComponent(creds.user) + "/" + encodeURIComponent(creds.pass) + "/" + id + "." + ext;
   }
   function liveExt() {
-    if (isWeb) return "m3u8";
+    if (isWeb) { var ff = (account && account.allowed_output_formats) || []; return (!ff.length || ff.indexOf("m3u8") >= 0) ? "m3u8" : "ts"; }
     var f = (account && account.allowed_output_formats) || [];
     if (!f.length || f.indexOf("ts") >= 0) return "ts";
     return "m3u8";
@@ -123,9 +123,20 @@
     });
     return hlsLib;
   }
+  var mpegLib = null;
+  function loadMpegts() {
+    if (mpegLib) return mpegLib;
+    mpegLib = new Promise(function (res, rej) {
+      var sc = document.createElement("script");
+      sc.src = "https://cdn.jsdelivr.net/npm/mpegts.js@1.8.0/dist/mpegts.js";
+      sc.onload = function () { res(window.mpegts); }; sc.onerror = rej;
+      document.head.appendChild(sc);
+    });
+    return mpegLib;
+  }
   function webPlayer(d) {
     var old = document.getElementById("wplayer"); if (old) old.remove();
-    var i = d.index || 0, hls = null, hideT = 0;
+    var i = d.index || 0, hls = null, hideT = 0, mp = null;
     var box = document.createElement("div"); box.id = "wplayer";
     box.innerHTML = '<video playsinline webkit-playsinline autoplay controls></video>' +
       '<div class="wp-top"><button class="wp-x" aria-label="Fechar">✕</button><div class="wp-t"></div></div>' +
@@ -139,7 +150,19 @@
       box.querySelector(".wp-t").textContent = d.titles[i] || "";
       msg.textContent = "Carregando..."; msg.style.display = "block";
       if (hls) { hls.destroy(); hls = null; }
-      var u = d.urls[i], isHls = /\.m3u8(\?|$)/i.test(u);
+      if (mp) { try { mp.destroy(); } catch (e) {} mp = null; }
+      var u = d.urls[i], isHls = /\.m3u8(\?|$)/i.test(u), isTs = /\.ts(\?|$)/i.test(u);
+      if (isTs) {
+        v.disableRemotePlayback = true;
+        loadMpegts().then(function (M) {
+          if (!M || !M.isSupported()) { fail(); msg.innerHTML += "<br><small>Este iPhone precisa do iOS 17.1 ou mais novo.</small>"; return; }
+          mp = M.createPlayer({ type: "mpegts", isLive: !!d.live, url: u }, { enableWorker: false, liveBufferLatencyChasing: true, lazyLoad: false });
+          mp.attachMediaElement(v); mp.load();
+          mp.on(M.Events.ERROR, function () { fail(); });
+          var pp = mp.play(); if (pp && pp.catch) pp.catch(function () {});
+        }, fail);
+        showUi(); return;
+      }
       if (isHls && !v.canPlayType("application/vnd.apple.mpegurl")) {
         loadHls().then(function (H) {
           if (!H || !H.isSupported()) { v.src = u; return; }
@@ -157,7 +180,7 @@
     v.addEventListener("playing", function () { msg.style.display = "none"; });
     v.addEventListener("error", fail);
     box.onclick = function (e) { if (e.target === v || e.target === box) showUi(); };
-    box.querySelector(".wp-x").onclick = function () { if (hls) hls.destroy(); v.pause(); v.removeAttribute("src"); v.load(); box.remove(); };
+    box.querySelector(".wp-x").onclick = function () { if (hls) hls.destroy(); if (mp) { try { mp.destroy(); } catch (e) {} } v.pause(); v.removeAttribute("src"); v.load(); box.remove(); };
     if (d.urls.length > 1) {
       box.querySelector(".wp-prev").onclick = function () { load(i - 1); };
       box.querySelector(".wp-next").onclick = function () { load(i + 1); };
