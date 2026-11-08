@@ -192,14 +192,22 @@
         }, function () { v.src = u; });
       } else {
         var tries = 0, vtok = {}; box.__vtok = vtok;
+        var em = /\.(mkv|avi|wmv|flv)(\?|$)/i.exec(u), fmt = em ? em[1].toUpperCase() : "";
+        // MKV/AVI: tenta pedir como MP4 (alguns servidores entregam), depois avisa
+        var list = em ? [u.replace(/\.(mkv|avi|wmv|flv)(\?|$)/i, ".mp4$2"), u.replace(/\.(mkv|avi|wmv|flv)(\?|$)/i, ".mp4$2")] : [u, u, u, u];
+        var badFmt = function () {
+          msg.style.display = "block";
+          msg.innerHTML = "Este conteúdo está em <b>" + fmt + "</b>, formato que o iPhone não toca." + (d.urls.length > 1 ? "<br>Toque em › para tentar o próximo." : "") + "<br><small>Na TV Box, Fire Stick e Android ele funciona normalmente.</small>";
+        };
         var go1 = function () {
           if (box.__vtok !== vtok) return;
-          tries++; msg.textContent = tries > 1 ? "Conectando... (tentativa " + tries + ")" : "Carregando..."; msg.style.display = "block";
-          v.src = u; var p = v.play(); if (p && p.catch) p.catch(function () {});
+          if (tries >= list.length) { if (em) badFmt(); else fail(); return; }
+          var src = list[tries++]; msg.textContent = tries > 1 ? "Conectando... (tentativa " + tries + ")" : "Carregando..."; msg.style.display = "block";
+          v.src = src; var p = v.play(); if (p && p.catch) p.catch(function () {});
           var started = false;
           v.onplaying = function () { started = true; msg.style.display = "none"; };
-          v.onerror = function () { if (box.__vtok !== vtok) return; if (tries < 4) setTimeout(go1, 600); else fail(); };
-          setTimeout(function () { if (box.__vtok === vtok && !started && v.readyState < 2) { if (tries < 4) go1(); else fail(); } }, 20000);
+          v.onerror = function () { if (box.__vtok !== vtok) return; started = true; setTimeout(go1, 500); };
+          setTimeout(function () { if (box.__vtok === vtok && !started && v.readyState < 2) go1(); }, 15000);
         };
         go1();
       }
