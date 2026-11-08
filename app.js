@@ -73,7 +73,9 @@
         cbs[id] = function (ok, text) { ok ? resolve(text) : reject(new Error(text)); };
         window.Native.get(id, url);
       } else {
-        fetch(url).then(function (r) { return r.ok ? r.text() : Promise.reject(new Error("HTTP " + r.status)); }).then(resolve, reject);
+        var ctl = window.AbortController ? new AbortController() : null, tmo = setTimeout(function () { if (ctl) ctl.abort(); }, 40000);
+        fetch(url, ctl ? { signal: ctl.signal } : {}).then(function (r) { return r.ok ? r.text() : Promise.reject(new Error("HTTP " + r.status)); })
+          .then(function (t) { clearTimeout(tmo); resolve(t); }, function (e) { clearTimeout(tmo); reject(e && e.name === "AbortError" ? new Error("o servidor demorou para responder") : e); });
       }
     });
   }
@@ -151,7 +153,7 @@
       msg.textContent = "Carregando..."; msg.style.display = "block";
       if (hls) { hls.destroy(); hls = null; }
       if (mp) { try { mp.destroy(); } catch (e) {} mp = null; }
-      box.__tok = null;
+      box.__tok = null; box.__vtok = null; v.onwaiting = null; v.onplaying = null; v.onerror = null;
       var u = d.urls[i], isHls = /\.m3u8(\?|$)/i.test(u), isTs = /\.ts(\?|$)/i.test(u);
       if (isTs) {
         v.disableRemotePlayback = true;
@@ -166,11 +168,15 @@
             if (at >= alts.length) { fail(); return; }
             var url = alts[at++], started = false, tm = 0;
             msg.textContent = at > 1 ? "Conectando... (tentativa " + at + ")" : "Carregando..."; msg.style.display = "block";
-            mp = M.createPlayer({ type: "mpegts", isLive: !!d.live, url: url }, { enableWorker: false, liveBufferLatencyChasing: true, lazyLoad: false });
+            mp = M.createPlayer({ type: "mpegts", isLive: !!d.live, url: url }, { enableWorker: false, enableStashBuffer: true, stashInitialSize: 1024 * 1024, liveBufferLatencyChasing: false, autoCleanupSourceBuffer: true, lazyLoad: false });
             mp.attachMediaElement(v); mp.load();
             var again = function () { if (started) return; started = true; clearTimeout(tm); setTimeout(attempt, 300); };
             mp.on(M.Events.ERROR, again);
             v.addEventListener("playing", function onp() { started = true; clearTimeout(tm); v.removeEventListener("playing", onp); });
+            // travou por mais de 8s depois de começar: reconecta
+            var stallT = 0, myTok = token;
+            v.onwaiting = function () { clearTimeout(stallT); stallT = setTimeout(function () { if (box.__tok === myTok && started && v.readyState < 3) { msg.textContent = "Reconectando..."; msg.style.display = "block"; at = Math.max(0, at - 1); attempt(); } }, 8000); };
+            v.onplaying = function () { clearTimeout(stallT); msg.style.display = "none"; };
             tm = setTimeout(again, 12000);
             var pp = mp.play(); if (pp && pp.catch) pp.catch(function () {});
           }
@@ -184,8 +190,19 @@
           hls = new H(); hls.loadSource(u); hls.attachMedia(v);
           hls.on(H.Events.ERROR, function (e, x) { if (x && x.fatal) fail(); });
         }, function () { v.src = u; });
-      } else v.src = u;
-      var p = v.play(); if (p && p.catch) p.catch(function () {});
+      } else {
+        var tries = 0, vtok = {}; box.__vtok = vtok;
+        var go1 = function () {
+          if (box.__vtok !== vtok) return;
+          tries++; msg.textContent = tries > 1 ? "Conectando... (tentativa " + tries + ")" : "Carregando..."; msg.style.display = "block";
+          v.src = u; var p = v.play(); if (p && p.catch) p.catch(function () {});
+          var started = false;
+          v.onplaying = function () { started = true; msg.style.display = "none"; };
+          v.onerror = function () { if (box.__vtok !== vtok) return; if (tries < 4) setTimeout(go1, 600); else fail(); };
+          setTimeout(function () { if (box.__vtok === vtok && !started && v.readyState < 2) { if (tries < 4) go1(); else fail(); } }, 20000);
+        };
+        go1();
+      }
       showUi();
     }
     function fail() {
@@ -193,7 +210,7 @@
       msg.innerHTML = "Não foi possível abrir este conteúdo aqui." + (d.urls.length > 1 ? "<br>Toque em › para tentar outro canal." : "") + (d.live ? "" : "<br><small>Alguns filmes e séries vêm num formato que o iPhone não toca.</small>");
     }
     v.addEventListener("playing", function () { msg.style.display = "none"; });
-    v.addEventListener("error", function () { if (!mp) fail(); });
+    v.addEventListener("error", function () { if (!mp && !box.__vtok) fail(); });
     box.onclick = function (e) { if (e.target === v || e.target === box) showUi(); };
     box.querySelector(".wp-x").onclick = function () { if (hls) hls.destroy(); if (mp) { try { mp.destroy(); } catch (e) {} } v.pause(); v.removeAttribute("src"); v.load(); box.remove(); };
     if (d.urls.length > 1) {
