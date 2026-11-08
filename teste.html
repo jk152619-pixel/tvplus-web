@@ -19,7 +19,7 @@ video{width:100%;background:#000;margin-top:8px;border-radius:8px}
 <script>
 var out=document.getElementById("out");
 function line(t,c){var d=document.createElement("div");d.className="r "+(c||"");d.textContent=t;out.appendChild(d);return d}
-var BASE=["https://yt19.org","https://t.smts.top","https://wempy.online","https://levi25.biz"];var DNS=[];BASE.forEach(function(b){DNS.push(b)});["wempy.online","levi25.biz","t.smts.top"].forEach(function(h){[8443,2053,2083,2087,2096].forEach(function(p){DNS.push("https://"+h+":"+p)})});
+var DNS=["https://yt19.org"];
 function test(base,u,p){
   var ctl=window.AbortController?new AbortController():null;if(ctl)setTimeout(function(){ctl.abort()},8000);
   var url=base+"/player_api.php?username="+encodeURIComponent(u)+"&password="+encodeURIComponent(p);
@@ -42,8 +42,26 @@ document.getElementById("go").onclick=function(){
 };
 function mask(t,u,p){return String(t).split(u).join("USER").split(encodeURIComponent(u)).join("USER").split(p).join("SENHA").split(encodeURIComponent(p)).join("SENHA")}
 
+
+function linkTest(base,u,p,c){
+  var U=encodeURIComponent(u),P=encodeURIComponent(p),id=c.stream_id;
+  var vars=[["/live/U/P/ID.ts",base+"/live/"+U+"/"+P+"/"+id+".ts"],["/U/P/ID",base+"/"+U+"/"+P+"/"+id],["/U/P/ID.ts",base+"/"+U+"/"+P+"/"+id+".ts"],["/live/U/P/ID",base+"/live/"+U+"/"+P+"/"+id]];
+  line("=== TESTE DOS FORMATOS DE LINK ("+c.name+") ===","mid");
+  var k=0,best=null;
+  (function next(){
+    if(k>=vars.length){ if(best){window.__tsUrl=best;window.__ts(c)} else line("Nenhum formato de link respondeu OK","bad"); return; }
+    var v=vars[k++],ctl=new AbortController(),t=setTimeout(function(){ctl.abort()},10000);
+    fetch(v[1],{signal:ctl.signal,redirect:"follow"}).then(function(r){
+      clearTimeout(t); ctl.abort();
+      var host=""; try{host=new URL(r.url).protocol+"//"+new URL(r.url).host}catch(e){}
+      var ok=r.status>=200&&r.status<300;
+      line(v[0]+" → HTTP "+r.status+" • tipo: "+(r.headers.get("content-type")||"?")+" • final: "+host+(r.redirected?" (redirecionou)":""),ok?"ok":"bad");
+      if(ok&&!best)best=v[1]; next();
+    },function(e){clearTimeout(t);line(v[0]+" → ❌ "+e.message+" (provável redirecionamento para http ou bloqueio)","bad");next()});
+  })();
+}
 function tsTest(base,u,p,c){
-  var s=base+"/live/"+encodeURIComponent(u)+"/"+encodeURIComponent(p)+"/"+c.stream_id+".ts";
+  var s=window.__tsUrl||(base+"/live/"+encodeURIComponent(u)+"/"+encodeURIComponent(p)+"/"+c.stream_id+".ts");
   if(!window.mpegts){line("Tocador TS não carregou","bad");return}
   line("Suporte a TS neste iPhone: "+(mpegts.isSupported()?"SIM":"NÃO (precisa iOS 17.1+)"),mpegts.isSupported()?"ok":"bad");
   if(!mpegts.isSupported())return;
@@ -57,17 +75,17 @@ function tsTest(base,u,p,c){
   var x=pl.play();if(x&&x.catch)x.catch(function(){});
 }
 function canal(base,u,p){
-  window.__ts=function(c){tsTest(base,u,p,c)};
+  window.__ts=function(c){tsTest(base,u,p,c)};window.__link=function(c){linkTest(base,u,p,c)};
   var q=base+"/player_api.php?username="+encodeURIComponent(u)+"&password="+encodeURIComponent(p);
   fetch(q).then(function(r){return r.json()}).then(function(j){
     var f=(j.user_info&&j.user_info.allowed_output_formats)||[];
     line("Formatos liberados nesse usuário: "+(f.length?f.join(", "):"(não informado)"),f.indexOf("m3u8")>=0?"ok":"bad");
   });
   fetch(q+"&action=get_live_streams").then(function(r){return r.json()}).then(function(a){
-    var picks=[a[0],a[Math.floor(a.length/2)],a[a.length-1]].filter(Boolean);
+    var picks=[a[0]].filter(Boolean);
     var k=0; var first=picks[0];
     function one(){
-      if(k>=picks.length){ if(first) window.__ts(first); return; }
+      if(k>=picks.length){ if(first) window.__link(first); return; }
       var c=picks[k++];
       var s=base+"/live/"+encodeURIComponent(u)+"/"+encodeURIComponent(p)+"/"+c.stream_id+".m3u8";
       var l=line("Canal "+k+": "+c.name,"mid");
